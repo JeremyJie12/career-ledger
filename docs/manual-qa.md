@@ -13,6 +13,7 @@ Use a separate data directory, e.g. `CAREER_DATA_DIR=./data/qa npm start`. All i
 9. Edit or withdraw a current card. The previous job run and exported text must remain unchanged.
 10. Download a backup; stop the app, restore to a separate data directory, restart and check counts and history.
 11. Configure a compatible model separately. Confirm that the mode switch discloses provider transmission; inspect tool summaries. With an invalid key, expect a visible error and the source to remain saved.
+    Verify the select contains two actual options, select Agent, reload, and confirm Agent stays selected. Choose local mode, reload, and confirm local stays selected. With configuration removed and the server restarted, Agent must be unavailable even when it was previously selected.
 12. Check navigation, forms, dialogs and wrapping on a narrow viewport; verify keyboard focus and that user-entered HTML is displayed as text.
 13. In the daily journal, record two days in the same week and one day in the following week. Repeat one identical submission; it must not duplicate the source. Same content on a different date must remain a distinct entry.
 14. Generate the first week's report. Check its Monday/Sunday bounds, covered-day count, completed/blocker/plan separation, and `[D…]` source links. The following week's note must be absent.

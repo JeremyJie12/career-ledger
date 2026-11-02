@@ -29,7 +29,7 @@ Generated cards start as drafts. Users review ownership, outcomes, and exact sou
 - **Local rules:** preserves source excerpts and identifies keyword overlap. No model calls; no claims of semantic matching or qualification scoring.
 - **Agent:** uses `read_source` and `search_cards`, then proposes a card or a job-to-evidence mapping through validated tools. It cannot confirm cards or merge records. Invalid citations are returned for correction. Runs are bounded to seven requests, each with a 45-second timeout.
 
-To enable the agent, copy `.env.example` to `.env` and set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Your endpoint must support Chat Completions function calling, `tool_choice: required`, and `max_tokens`. Restart and select Agent mode in the header. Relevant notes, cards and job descriptions are sent to that provider. Model integration is covered by mocked protocol tests; live provider compatibility is not yet certified.
+To enable the agent, copy `.env.example` to `.env` and set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Your endpoint must support Chat Completions function calling, `tool_choice: required`, and `max_tokens`. Restart and select Agent mode in the header; the browser remembers your choice. Relevant notes, cards and job descriptions are sent to that provider. The header distinguishes configured model and active mode from local data storage. Mocked protocol tests cover integration behavior. On 2026-11-02, a fictional experience-draft task succeeded against `qwen3.5-plus`, including source reading and citation validation; live job matching and weekly synthesis remain unverified for that model.
 
 ## Persistence and limits
 

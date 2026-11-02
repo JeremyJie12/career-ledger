@@ -9,6 +9,7 @@ const icons = {
 };
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">${icons[name]}</svg>`;
 let state, page = 'inbox', filter = 'all', search = '', activeRun = null, mode = 'local', busy = '', busyKey = '', toastTimer;
+try { if (localStorage.getItem('career-ledger-mode') === 'agent') mode = 'agent'; } catch { /* Storage may be disabled; mode still works for this page. */ }
 const draftInput = { title: '', content: '' };
 const jobInput = { title: '', jd: '' };
 async function api(path, method = 'GET', data) {
@@ -16,7 +17,7 @@ async function api(path, method = 'GET', data) {
   const result = await response.json(); if (!response.ok) throw new Error(result.error || '请求失败'); return result;
 }
 function toast(message, error = false) { clearTimeout(toastTimer); const node = $('#toast'); node.textContent = message; node.className = error ? 'error' : ''; node.style.display = 'block'; toastTimer = setTimeout(() => { node.style.display = 'none'; }, error ? 9000 : 4500); }
-async function refresh() { state = await api('/api/state'); render(); }
+async function refresh() { state = await api('/api/state'); if (!state.configured) mode = 'local'; render(); }
 const date = iso => new Date(iso).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 const disabled = () => busy ? 'disabled' : '';
 function nav(name, label, count) { return `<button class="nav ${page === name ? 'active' : ''}" data-page="${name}" ${page === name ? 'aria-current="page"' : ''}>${icon(name)}${label}<span class="count">${String(count).padStart(2, '0')}</span></button>`; }
@@ -25,8 +26,12 @@ function traceHtml(trace) { return `<details><summary>查看整理轨迹 · ${tr
 function evidenceHtml(card, sources = state.sources) { return card.evidence.map((e, index) => { const source = sources.find(s => s.id === e.sourceId); return `<div class="evidence"><div class="row between"><span class="tiny">证据 ${index + 1} · ${esc(source?.title || '来源缺失')}</span></div><blockquote>${esc(e.quote)}</blockquote></div>`; }).join(''); }
 function render() {
   const confirmed = state.cards.filter(c => c.status === 'confirmed').length;
-  $('#app').innerHTML = `<div class="layout"><aside class="sidebar"><div class="brand"><img src="/favicon.svg" alt=""><div><strong>经历账本</strong><small>CAREER LEDGER</small></div></div><nav aria-label="主导航">${nav('journal', '日报与周报', state.sources.filter(s => s.kind === 'daily').length)}${nav('inbox', '收件箱', state.sources.length)}${nav('library', '经历库', state.cards.length)}${nav('jobs', '岗位工作台', state.runs.length)}</nav><div class="sidebar-bottom"><p class="tiny"><span class="local-dot"></span>资料保存在本机</p><p class="tiny muted">每一段经历，都有来处。</p><p class="eyebrow mt20">V0.1 · OPEN SOURCE</p></div></aside><main class="main"><header class="topbar"><span class="topbar-label">你的工作记录，未来的职业底气。</span><div class="row"><select id="mode" class="mode" aria-label="处理模式"><option value="local" ${mode === 'local' ? 'selected' : ''}>本地规则模式</option value="agent" ${mode === 'agent' ? 'selected' : ''} ${state.configured ? '' : 'disabled'}>模型 Agent 模式</option></select><button class="ghost small" data-action="settings">模型设置</button><button class="ghost small" data-action="backup">备份</button></div></header>${busy ? `<div class="busy-banner" role="status"><span class="spinner"></span>${esc(busy)} · 原始记录会保留，请稍候</div>` : ''}${page === 'journal' ? journalView({state, mode, disabled, traceHtml}) : page === 'inbox' ? inbox(confirmed) : page === 'library' ? library() : jobs()}</main></div>`;
+  $('#app').innerHTML = `<div class="layout"><aside class="sidebar"><div class="brand"><img src="/favicon.svg" alt=""><div><strong>经历账本</strong><small>CAREER LEDGER</small></div></div><nav aria-label="主导航">${nav('journal', '日报与周报', state.sources.filter(s => s.kind === 'daily').length)}${nav('inbox', '收件箱', state.sources.length)}${nav('library', '经历库', state.cards.length)}${nav('jobs', '岗位工作台', state.runs.length)}</nav><div class="sidebar-bottom"><p class="tiny"><span class="local-dot"></span>资料保存在本机</p><p class="tiny muted">每一段经历，都有来处。</p><p class="eyebrow mt20">V0.1 · OPEN SOURCE</p></div></aside><main class="main"><header class="topbar"><span class="topbar-label">你的工作记录，未来的职业底气。</span><div class="row"><select id="mode" class="mode" aria-label="处理模式"><option value="local" ${mode === 'local' ? 'selected' : ''}>本地规则模式</option><option value="agent" ${mode === 'agent' ? 'selected' : ''} ${state.configured ? '' : 'disabled'}>模型 Agent 模式</option></select><button class="ghost small" data-action="settings">模型设置</button><button class="ghost small" data-action="backup">备份</button></div></header>${busy ? `<div class="busy-banner" role="status"><span class="spinner"></span>${esc(busy)} · 原始记录会保留，请稍候</div>` : ''}${page === 'journal' ? journalView({state, mode, disabled, traceHtml}) : page === 'inbox' ? inbox(confirmed) : page === 'library' ? library() : jobs()}</main></div>`;
   bind();
+  const modelStatus = document.createElement('span');
+  modelStatus.className = 'model-status';
+  modelStatus.textContent = state.configured ? `模型已配置：${state.model} · ${mode === 'agent' ? 'Agent 已启用' : '可在下拉框切换 Agent'}` : '未配置模型 · 使用本地规则';
+  $('.topbar').after(modelStatus);
   if (busy) document.querySelectorAll('main input, main textarea, main select').forEach(el => { el.disabled = true; });
 }
 function inbox(confirmed) {
@@ -61,7 +66,7 @@ async function operation(label, key, fn) { if (busy) return; busy = label; busyK
 function bind() {
   bindJournal({state, mode, api, operation, toast, render, download, openModal});
   document.querySelectorAll('[data-page]').forEach(el => { el.onclick = () => { page = el.dataset.page; render(); }; });
-  $('#mode').onchange = event => { mode = event.target.value; render(); toast(mode === 'agent' ? '已切换 Agent：运行时相关资料将发送到配置的模型服务' : '已切换本地规则模式'); };
+  $('#mode').onchange = event => { mode = event.target.value; try { localStorage.setItem('career-ledger-mode', mode); } catch { /* The selected mode remains valid for this page. */ } render(); toast(mode === 'agent' ? '已切换 Agent：运行时相关资料将发送到配置的模型服务' : '已切换本地规则模式'); };
   document.querySelectorAll('[data-action]').forEach(el => { el.onclick = async () => {
     if (el.dataset.action === 'settings') return settings();
     if (el.dataset.action === 'demo') return operation('正在载入虚构示例', 'demo', async () => { await api('/api/demo', 'POST', {}); toast('已载入林舟的虚构经历，可前往经历库核对'); });
