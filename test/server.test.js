@@ -100,3 +100,49 @@ test('daily-to-weekly API preserves dates, avoids duplicate posts and snapshots 
   assert.equal(backup.weeklyReports[0].sources.length, 2);
   assert.equal(backup.sources.length, 4);
 });
+test('delete/restore API hides sources and dependent cards while preserving existing report snapshots', async t => {
+  const { api } = await fixture(t);
+  const source = (await api('/api/daily', 'POST', { date: '2026-11-02', completed: '参与 TypeScript 测试' })).data.source;
+  const card = (await api('/api/draft', 'POST', { sourceId: source.id, mode: 'local' })).data;
+  await api(`/api/cards/${card.id}`, 'PATCH', { ...card, contribution: '参与', status: 'confirmed' });
+  const weekly = (await api('/api/weekly', 'POST', { date: '2026-11-02', mode: 'local' })).data;
+  const run = (await api('/api/match', 'POST', { title: '工程师', jd: 'TypeScript 测试', mode: 'local' })).data;
+  assert.equal((await api('/api/trash', 'POST', { collection: 'sources', id: source.id })).data.moved, 2);
+  const hidden = (await api('/api/state')).data;
+  assert.equal(hidden.sources.length, 0); assert.equal(hidden.cards.length, 0); assert.equal(hidden.trash.length, 2);
+  assert.equal(hidden.runs[0].markdown, run.markdown); assert.equal(hidden.weeklyReports[0].markdown, weekly.markdown);
+  assert.equal((await api('/api/draft', 'POST', { sourceId: source.id, mode: 'local' })).status, 404);
+  assert.equal((await api(`/api/cards/${card.id}`, 'PATCH', { ...card, status: 'confirmed' })).status, 404);
+  assert.equal((await api('/api/weekly', 'POST', { date: '2026-11-02', mode: 'local' })).status, 400);
+  const empty = (await api('/api/match', 'POST', { title: '工程师', jd: 'TypeScript 测试', mode: 'local' })).data;
+  assert.equal(empty.snapshot.cards.length, 0);
+  assert.ok((await api('/api/backup')).data.sources[0].deletedAt);
+  assert.equal((await api('/api/restore', 'POST', { collection: 'cards', id: card.id })).status, 409);
+  assert.equal((await api('/api/restore', 'POST', { collection: 'sources', id: source.id })).data.restored, 2);
+  for (const [collection, item] of [['runs', run], ['weeklyReports', weekly]]) {
+    await api('/api/trash', 'POST', { collection, id: item.id });
+    assert.ok(!(await api('/api/state')).data[collection].some(x => x.id === item.id));
+    await api('/api/restore', 'POST', { collection, id: item.id });
+    assert.equal((await api('/api/state')).data[collection].find(x => x.id === item.id).markdown, item.markdown);
+  }
+});
+test('a weekly model result cannot save after its source was deleted mid-flight', async t => {
+  let release; let signalStarted; let calls = 0; let source;
+  const paused = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { signalStarted = resolve; });
+  const reply = (name, args) => new Response(JSON.stringify({ choices: [{ message: { tool_calls: [{ id: 'call', type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }] }));
+  const { api } = await fixture(t, {
+    config: { baseUrl: 'https://model.example/v1', apiKey: 'test-key', model: 'mock' },
+    fetcher: async () => {
+      if (!calls++) { signalStarted(); await paused; return reply('read_week_notes', {}); }
+      return reply('finish_weekly', { completed: [{ text: '完成测试', evidence: [{ sourceId: source.id, quote: '完成测试' }] }], blockers: [], next: [] });
+    },
+  });
+  source = (await api('/api/daily', 'POST', { date: '2026-11-02', completed: '完成测试' })).data.source;
+  const generating = api('/api/weekly', 'POST', { date: '2026-11-02', mode: 'agent' });
+  await started;
+  await api('/api/trash', 'POST', { collection: 'sources', id: source.id });
+  release();
+  assert.equal((await generating).status, 409);
+  assert.equal((await api('/api/state')).data.weeklyReports.length, 0);
+});

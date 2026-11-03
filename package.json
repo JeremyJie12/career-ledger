@@ -9,7 +9,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/domain.js && node --check src/agent.js && node --check public/app.js && node --check public/journal.js"
+    "check": "node --check src/server.js && node --check src/domain.js && node --check src/agent.js && node --check public/app.js && node --check public/journal.js && node --check public/deletion.js && node --check src/trash.js"
   },
   "license": "MIT"
 }

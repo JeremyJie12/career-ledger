@@ -39,6 +39,8 @@ Job runs store immutable evidence snapshots. Markdown exports use approved wordi
 
 The server binds to loopback and checks Host and Origin. It has no authentication or multi-user isolation. Do not expose it directly to the public internet. Local data is not encrypted.
 
+Entries, experience cards and reports can be moved to Trash and restored. Deleting a source also trashes active cards citing it; restoring that source attempts to restore those cards. Cards with other missing sources stay in Trash until their evidence is restored. Deleting a card alone preserves its source. Existing report snapshots remain unchanged, while new generation excludes deleted inputs. Backups include trashed records; this is reversible deletion, not permanent erasure.
+
 ## Development
 
 ```bash

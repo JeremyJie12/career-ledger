@@ -6,10 +6,11 @@ import { Store } from './store.js';
 import { CareerAgent, configFromEnv, isConfigured } from './agent.js';
 import { AppError, id, now, text, sourceFrom, validateCard, resumeFor, dailySource, weeklySources, weeklyMarkdown } from './domain.js';
 import { demoData, demoJobs } from '../examples/demo.js';
+import { visibleState, moveToTrash, restoreFromTrash, retainHistory } from './trash.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 try { process.loadEnvFile(resolve(root, '.env')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-const assets = { '/journal.js': ['journal.js', 'text/javascript; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+const assets = { '/deletion.js': ['deletion.js', 'text/javascript; charset=utf-8'], '/journal.js': ['journal.js', 'text/javascript; charset=utf-8'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new AppError('只接受 JSON 请求', 415);
   const chunks = await new Promise((resolve, reject) => {
@@ -38,21 +39,26 @@ export function createApp({ dataDir = resolve(process.env.CAREER_DATA_DIR || res
       if (req.method === 'GET' && assets[path]) {
         const [file, type] = assets[path]; return send(res, 200, await readFile(resolve(root, 'public', file)), type);
       }
-      if (req.method === 'GET' && path === '/api/state') return send(res, 200, { ...await store.read(), configured: isConfigured(config), model: config.model || null, demoJobs });
+      if (req.method === 'GET' && path === '/api/state') return send(res, 200, { ...visibleState(await store.read()), configured: isConfigured(config), model: config.model || null, demoJobs });
       if (req.method === 'GET' && path === '/api/backup') return send(res, 200, await store.read());
+      if (req.method === 'POST' && ['/api/trash', '/api/restore'].includes(path)) {
+        const input = await body(req);
+        const result = await store.update(state => (path === '/api/trash' ? moveToTrash : restoreFromTrash)(state, input.collection, input.id));
+        return send(res, 200, result);
+      }
       if (req.method === 'POST' && ['/api/sources', '/api/daily'].includes(path)) {
         const input = await body(req);
         const source = path === '/api/daily' ? dailySource(input) : sourceFrom(input);
         const saved = await store.update(state => {
-          const old = state.sources.find(s => s.hash === source.hash);
+          const old = state.sources.find(s => !s.deletedAt && s.hash === source.hash);
           if (old) return { source: old, duplicate: true };
-          if (state.sources.length >= 500) throw new AppError('第一版最多保存 500 条记录，请先导出备份');
+          if (state.sources.filter(s => !s.deletedAt).length >= 500) throw new AppError('第一版最多保存 500 条使用中的记录，请先删除不需要的记录');
           state.sources.unshift(source); return { source, duplicate: false };
         });
         return send(res, 200, saved);
       }
       if (req.method === 'POST' && path === '/api/weekly') {
-        const input = await body(req); const state = await store.read();
+        const input = await body(req); const state = visibleState(await store.read());
         const week = weeklySources(state.sources, input.date);
         if (!week.notes.length) throw new AppError('这一周还没有日报，请先记录一天的工作');
         if (week.notes.length > 30 || week.notes.reduce((sum, s) => sum + s.content.length, 0) > 60000) throw new AppError('单次周报最多处理 30 条日报、60000 字符，请减少单周资料量');
@@ -63,7 +69,10 @@ export function createApp({ dataDir = resolve(process.env.CAREER_DATA_DIR || res
           const result = await agent.run('weekly', week, state, input.mode);
           const report = { id: id(), start: week.start, end: week.end, createdAt: now(), mode: result.mode, sections: result.sections, sources: week.notes, trace: result.trace };
           report.markdown = weeklyMarkdown(report);
-          await store.update(current => { current.weeklyReports.unshift(report); current.weeklyReports = current.weeklyReports.slice(0, 100); });
+          await store.update(current => {
+            if (week.notes.some(note => !current.sources.some(s => s.id === note.id && !s.deletedAt))) throw new AppError('生成期间有日报被删除，请重新生成周报', 409);
+            current.weeklyReports.unshift(report); current.weeklyReports = retainHistory(current.weeklyReports, 100);
+          });
           return send(res, 200, report);
         } finally { active.delete(key); }
       }
@@ -72,21 +81,21 @@ export function createApp({ dataDir = resolve(process.env.CAREER_DATA_DIR || res
         if (active.has(key)) throw new AppError('这条记录正在整理中', 409);
         active.add(key);
         try {
-          const state = await store.read(); const source = state.sources.find(s => s.id === input.sourceId);
+          const state = visibleState(await store.read()); const source = state.sources.find(s => s.id === input.sourceId);
           if (!source) throw new AppError('记录不存在', 404);
           const result = await agent.run('draft', source, state, input.mode);
           const card = { ...validateCard(result.card, state.sources, source.id), id: id(), status: 'draft', revision: 1, createdAt: now(), updatedAt: now(), history: [], relatedIds: result.relatedIds, trace: result.trace, mode: result.mode };
-          await store.update(current => { validateCard(card, current.sources, source.id); current.cards.unshift(card); });
+          await store.update(current => { validateCard(card, visibleState(current).sources, source.id); current.cards.unshift(card); });
           return send(res, 200, card);
         } finally { active.delete(key); }
       }
       if (req.method === 'PATCH' && path.startsWith('/api/cards/')) {
         const cid = path.split('/').pop(); const input = await body(req);
         const saved = await store.update(state => {
-          const card = state.cards.find(c => c.id === cid); if (!card) throw new AppError('经历不存在', 404);
+          const card = state.cards.find(c => c.id === cid && !c.deletedAt); if (!card) throw new AppError('经历不存在或已删除', 404);
           if (input.revision !== card.revision) throw new AppError('经历已被其他页面更新，请刷新后再保存', 409);
           if (!['draft', 'confirmed'].includes(input.status)) throw new AppError('无效的确认状态');
-          const checked = validateCard({ ...input, evidence: card.evidence }, state.sources);
+          const checked = validateCard({ ...input, evidence: card.evidence }, visibleState(state).sources);
           if (input.status === 'confirmed' && checked.contribution === '待确认') throw new AppError('确认前请明确个人贡献');
           const { history, ...snapshot } = card;
           Object.assign(card, checked, { status: input.status, updatedAt: now(), revision: card.revision + 1, history: [...history, snapshot].slice(-30) });
@@ -99,7 +108,7 @@ export function createApp({ dataDir = resolve(process.env.CAREER_DATA_DIR || res
         const input = await body(req); const jd = text(input.jd, '岗位描述', 20000); const title = text(input.title, '岗位名称', 160);
         active.add('match');
         try {
-          const state = await store.read();
+          const state = visibleState(await store.read());
           const result = await agent.run('match', { jd }, state, input.mode);
           const run = { id: id(), title, jd, matches: result.matches, trace: result.trace, mode: result.mode, createdAt: now() };
           // Store an immutable evidence snapshot so later edits cannot change a past export.
@@ -107,7 +116,10 @@ export function createApp({ dataDir = resolve(process.env.CAREER_DATA_DIR || res
           const selectedCards = selectedIds.map(cid => state.cards.find(c => c.id === cid)).filter(Boolean);
           run.snapshot = { cards: selectedCards, sources: state.sources.filter(s => selectedCards.some(c => c.evidence.some(e => e.sourceId === s.id))) };
           run.markdown = resumeFor(run, run.snapshot);
-          await store.update(current => { current.runs.unshift(run); current.runs = current.runs.slice(0, 50); });
+          await store.update(current => {
+            if (selectedCards.some(card => !current.cards.some(c => c.id === card.id && !c.deletedAt && c.revision === card.revision))) throw new AppError('生成期间引用的经历被修改或删除，请重新分析', 409);
+            current.runs.unshift(run); current.runs = retainHistory(current.runs, 50);
+          });
           return send(res, 200, run);
         } finally { active.delete('match'); }
       }

@@ -27,6 +27,14 @@ flowchart LR
 
 The MVP allows 500 source records. Source input is limited to 40,000 characters; JD input to 20,000. Imported files are limited to 200 KB. Local draft mode takes an excerpt up to 2,400 characters, while preserving the complete original source. Agent search returns at most 30 cards per query. These are practical MVP bounds, not a long-document retrieval system.
 
+## Reversible deletion
+
+`trash.js` sets `deletedAt` and a `deletionBatch` on records in their original collections. `/api/state` exposes only active records plus a metadata-only Trash listing; `/api/backup` preserves all data. Existing version-1 ledgers need no migration. The source limit counts active sources.
+
+Deleting a source cascades to active cards referencing it. Restoring a source only auto-restores cards from that same deletion batch whose sources are all active. It does not revive cards previously deleted on their own. Restoring a source conflicts if an identical active source has been reimported. Card delete/restore increments the revision to reject stale edits.
+
+Draft, match and weekly generation operate on active snapshots and recheck referenced records at commit time, so deleting a dependency in flight cannot write a new result. Historical reports carry their own snapshots and remain readable. Active report retention limits do not purge trashed reports. No permanent-delete endpoint is provided.
+
 ## What code enforces
 
 - Source deduplication uses an exact content hash after outer whitespace trimming.

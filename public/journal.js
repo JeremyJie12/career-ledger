@@ -1,3 +1,4 @@
+import { deleteButton } from './deletion.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const dailyInput = { date: today(), completed: '', blockers: '', next: '' };
@@ -15,7 +16,7 @@ export function journalView({ state, mode, disabled, traceHtml }) {
   <div class="field"><label for="daily-blockers">问题与阻碍 · 选填</label><textarea id="daily-blockers" class="short-textarea" maxlength="5000" placeholder="什么卡住了？需要谁协助？">${esc(dailyInput.blockers)}</textarea></div>
   <div class="field"><label for="daily-next">下一步 · 选填</label><textarea id="daily-next" class="short-textarea" maxlength="5000" placeholder="接下来准备做什么？这是计划，不是已完成成果。">${esc(dailyInput.next)}</textarea></div>
   <div class="row between"><span class="tiny muted">只保存到本机，不调用模型</span><button class="primary" ${disabled()}>保存日报 →</button></div></form></section>
-  <section class="panel"><div class="panel-head"><h2>最近的日报</h2><span class="tiny muted">${entries.length} 条记录</span></div><div class="panel-body">${entries.length ? entries.slice(0, 10).map(s => `<article class="source"><div class="row between"><h3>${esc(s.date)}</h3><button class="small ghost" data-source="${s.id}">查看原文 ↗</button></div><p>${esc(s.daily.completed)}</p><button class="small" data-week-date="${s.date}" ${disabled()}>生成这一周的周报</button></article>`).join('') : '<p class="muted tiny">每天记录一两件具体的事，周报就有了素材。</p>'}</div></section></div>
+  <section class="panel"><div class="panel-head"><h2>最近的日报</h2><span class="tiny muted">${entries.length} 条记录</span></div><div class="panel-body">${entries.length ? entries.slice(0, 10).map(s => `<article class="source"><div class="row between"><h3>${esc(s.date)}</h3>${deleteButton('sources', s.id)}<button class="small ghost" data-source="${s.id}">查看原文 ↗</button></div><p>${esc(s.daily.completed)}</p><button class="small" data-week-date="${s.date}" ${disabled()}>生成这一周的周报</button></article>`).join('') : '<p class="muted tiny">每天记录一两件具体的事，周报就有了素材。</p>'}</div></section></div>
   <div class="stack"><section class="panel"><div class="panel-head"><h2>形成工作周报</h2><span class="step">每周 / 回顾</span></div><form id="weekly-form" class="panel-body stack"><div class="field"><label for="weekly-date">选择这一周中的任意一天</label><input type="date" id="weekly-date" required value="${esc(weeklyDate)}"><small>按周一至周日归集；不会把缺少记录的日期补成已完成。</small></div>
   <div class="hint">${mode === 'agent' ? 'Agent 会读取这一周的日报，归纳主题、合并重复事项，并为每条结论保留原文引用。日报会发送到配置的模型服务。' : '本地模式按完成、阻碍和计划归集原句，合并完全相同条目。不会自动判断旧计划是否已完成，导出前请核对。'}</div><button class="primary" ${disabled()}>生成周报 →</button></form></section>
   ${report ? reportView(report, traceHtml) : ''}
@@ -23,7 +24,7 @@ export function journalView({ state, mode, disabled, traceHtml }) {
 }
 
 function reportView(report, traceHtml) {
-  return `<section class="panel"><div class="panel-head"><div><h2>工作周报</h2><p class="tiny muted">${esc(report.start)} — ${esc(report.end)}</p></div><button class="small" data-week-export="${report.id}">导出 Markdown ↓</button></div>
+  return `<section class="panel"><div class="panel-head"><div><h2>工作周报</h2><p class="tiny muted">${esc(report.start)} — ${esc(report.end)}</p></div><div class="row wrap">${deleteButton('weeklyReports', report.id)}<button class="small" data-week-export="${report.id}">导出 Markdown ↓</button></div></div>
   <div class="panel-body"><div class="hint">依据 ${report.sources.length} 条日报 · 覆盖 ${new Set(report.sources.map(s => s.date)).size} 天 · ${report.mode === 'agent' ? '模型归纳，请复核' : '原句归集'}<br>只汇总已记录内容，保留生成时的原文快照。</div>
   ${[['completed', '本周完成'], ['blockers', '问题与阻碍'], ['next', '后续计划']].map(([key, label]) => `<div class="section-label"><h3>${label}</h3></div>${key === 'blockers' ? '<p class="footnote">记录时的阻碍，是否仍未解决请核对。</p>' : key === 'next' ? '<p class="footnote">来自每天的下一步，是否仍待执行请核对。</p>' : ''}${report.sections[key].length ? report.sections[key].map(item => `<div class="weekly-item"><p>${esc(item.text)}</p><div class="row wrap">${[...new Set(item.evidence.map(e => e.sourceId))].map(sid => `<button class="small ghost citation" data-week-evidence="${sid}" data-week-id="${report.id}">[D${report.sources.findIndex(s => s.id === sid) + 1}] ${esc(report.sources.find(s => s.id === sid)?.date)} ↗</button>`).join('')}</div></div>`).join('') : '<p class="muted tiny">本周日报未记录此项。</p>'}`).join('')}${traceHtml(report.trace)}</div></section>`;
 }
