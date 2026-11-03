@@ -59,11 +59,11 @@ export function createApp({ dataDir = resolve(process.env.CAREER_DATA_DIR || res
       }
       if (req.method === 'POST' && path === '/api/weekly') {
         const input = await body(req); const state = visibleState(await store.read());
-        const week = weeklySources(state.sources, input.date);
-        if (!week.notes.length) throw new AppError('这一周还没有日报，请先记录一天的工作');
-        if (week.notes.length > 30 || week.notes.reduce((sum, s) => sum + s.content.length, 0) > 60000) throw new AppError('单次周报最多处理 30 条日报、60000 字符，请减少单周资料量');
-        const key = `weekly:${week.start}`;
-        if (active.has(key)) throw new AppError('这一周的周报正在生成中', 409);
+        const week = weeklySources(state.sources, input.start, input.end);
+        if (!week.notes.length) throw new AppError('所选时间段没有日报，请调整日期或先补记工作');
+        if (week.notes.length > 30 || week.notes.reduce((sum, s) => sum + s.content.length, 0) > 60000) throw new AppError('单次周报最多处理 30 条日报、60000 字符，请缩小时间段');
+        const key = `weekly:${week.start}:${week.end}`;
+        if (active.has(key)) throw new AppError('这个时间段的周报正在生成中', 409);
         active.add(key);
         try {
           const result = await agent.run('weekly', week, state, input.mode);

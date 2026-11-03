@@ -4,7 +4,7 @@
 
 A local-first career evidence app with an optional tool-using agent. Capture work notes, review experience cards alongside their original sources, map confirmed experience to job requirements, and export Markdown with an evidence index.
 
-It also includes a **daily journal and weekly reports**: record completed work, blockers and next steps by date, then generate a Monday-to-Sunday report with links to each original entry. Local mode groups exact text and deduplicates identical items; Agent mode can synthesize themes with validated citations. Historical plans and blockers still need review. Reports preserve source snapshots and export as Markdown. Backdated entries and same-day additions are supported; missing days are never invented.
+It also includes a **daily journal and weekly reports**: record completed work, blockers and next steps by date, then generate a report for a custom start/end date range (both dates inclusive) with links to each original entry. Local mode groups exact text and deduplicates identical items; Agent mode can synthesize themes with validated citations. Historical plans and blockers still need review. Reports preserve source snapshots and export as Markdown. A last-seven-days shortcut pre-fills editable dates; single-day, cross-week, month and year ranges are supported. Backdated entries and same-day additions are supported; missing days are never invented.
 
 ## Run
 

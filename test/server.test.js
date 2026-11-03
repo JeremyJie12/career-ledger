@@ -83,14 +83,14 @@ test('atomic serialized updates do not lose concurrent writes; corrupt files are
 });
 test('daily-to-weekly API preserves dates, avoids duplicate posts and snapshots previous reports', async t => {
   const { api } = await fixture(t);
-  assert.equal((await api('/api/weekly', 'POST', { date: '2026-11-02', mode: 'local' })).status, 400);
+  assert.equal((await api('/api/weekly', 'POST', { start: '2026-11-02', end: '2026-11-08', mode: 'local' })).status, 400);
   const daily = { date: '2026-11-02', completed: '完成接口联调', blockers: '等待验收', next: '准备发布' };
   const first = await api('/api/daily', 'POST', daily);
   assert.equal(first.data.source.kind, 'daily');
   assert.equal((await api('/api/daily', 'POST', daily)).data.duplicate, true);
   await api('/api/daily', 'POST', { ...daily, date: '2026-11-03', completed: '完成测试环境验收' });
   await api('/api/daily', 'POST', { ...daily, date: '2026-11-09', completed: '下一周的工作' });
-  const run = (await api('/api/weekly', 'POST', { date: '2026-11-08', mode: 'local' })).data;
+  const run = (await api('/api/weekly', 'POST', { start: '2026-11-02', end: '2026-11-08', mode: 'local' })).data;
   assert.equal(run.sources.length, 2); assert.equal(run.start, '2026-11-02');
   assert.ok(run.markdown.includes('[D1]')); assert.ok(run.markdown.includes('准备发布'));
   assert.ok(!run.markdown.includes('下一周的工作'));
@@ -105,7 +105,7 @@ test('delete/restore API hides sources and dependent cards while preserving exis
   const source = (await api('/api/daily', 'POST', { date: '2026-11-02', completed: '参与 TypeScript 测试' })).data.source;
   const card = (await api('/api/draft', 'POST', { sourceId: source.id, mode: 'local' })).data;
   await api(`/api/cards/${card.id}`, 'PATCH', { ...card, contribution: '参与', status: 'confirmed' });
-  const weekly = (await api('/api/weekly', 'POST', { date: '2026-11-02', mode: 'local' })).data;
+  const weekly = (await api('/api/weekly', 'POST', { start: '2026-11-02', end: '2026-11-08', mode: 'local' })).data;
   const run = (await api('/api/match', 'POST', { title: '工程师', jd: 'TypeScript 测试', mode: 'local' })).data;
   assert.equal((await api('/api/trash', 'POST', { collection: 'sources', id: source.id })).data.moved, 2);
   const hidden = (await api('/api/state')).data;
@@ -113,7 +113,7 @@ test('delete/restore API hides sources and dependent cards while preserving exis
   assert.equal(hidden.runs[0].markdown, run.markdown); assert.equal(hidden.weeklyReports[0].markdown, weekly.markdown);
   assert.equal((await api('/api/draft', 'POST', { sourceId: source.id, mode: 'local' })).status, 404);
   assert.equal((await api(`/api/cards/${card.id}`, 'PATCH', { ...card, status: 'confirmed' })).status, 404);
-  assert.equal((await api('/api/weekly', 'POST', { date: '2026-11-02', mode: 'local' })).status, 400);
+  assert.equal((await api('/api/weekly', 'POST', { start: '2026-11-02', end: '2026-11-08', mode: 'local' })).status, 400);
   const empty = (await api('/api/match', 'POST', { title: '工程师', jd: 'TypeScript 测试', mode: 'local' })).data;
   assert.equal(empty.snapshot.cards.length, 0);
   assert.ok((await api('/api/backup')).data.sources[0].deletedAt);
@@ -139,10 +139,33 @@ test('a weekly model result cannot save after its source was deleted mid-flight'
     },
   });
   source = (await api('/api/daily', 'POST', { date: '2026-11-02', completed: '完成测试' })).data.source;
-  const generating = api('/api/weekly', 'POST', { date: '2026-11-02', mode: 'agent' });
+  const generating = api('/api/weekly', 'POST', { start: '2026-11-02', end: '2026-11-08', mode: 'agent' });
   await started;
   await api('/api/trash', 'POST', { collection: 'sources', id: source.id });
   release();
   assert.equal((await generating).status, 409);
   assert.equal((await api('/api/state')).data.weeklyReports.length, 0);
+});
+test('weekly reports use the exact inclusive custom range, including single-day and cross-year ranges', async t => {
+  const { api } = await fixture(t);
+  const dates = ['2026-12-29', '2026-12-30', '2027-01-01', '2027-01-04', '2027-01-05'];
+  for (const date of dates) await api('/api/daily', 'POST', { date, completed: `完成 ${date} 的工作` });
+  const deleted = (await api('/api/daily', 'POST', { date: '2027-01-02', completed: '不应纳入的已删除工作' })).data.source;
+  await api('/api/trash', 'POST', { collection: 'sources', id: deleted.id });
+  const { status, data: report } = await api('/api/weekly', 'POST', { start: '2026-12-30', end: '2027-01-04', mode: 'local' });
+  assert.equal(status, 200);
+  assert.equal(report.start, '2026-12-30'); assert.equal(report.end, '2027-01-04');
+  assert.deepEqual(report.sources.map(s => s.date), ['2026-12-30', '2027-01-01', '2027-01-04']);
+  assert.ok(report.markdown.includes('2026-12-30 — 2027-01-04'));
+  assert.ok(!report.markdown.includes('2026-12-29')); assert.ok(!report.markdown.includes('已删除工作'));
+  const single = (await api('/api/weekly', 'POST', { start: '2027-01-01', end: '2027-01-01', mode: 'local' })).data;
+  assert.equal(single.sources.length, 1);
+  for (const input of [
+    { start: '2027-01-05', end: '2027-01-04' },
+    { start: '2026-02-30', end: '2026-03-01' },
+    { start: '2027-01-01' },
+    { date: '2027-01-01' },
+    { start: '2028-01-01', end: '2028-01-04' },
+  ]) assert.equal((await api('/api/weekly', 'POST', { ...input, mode: 'local' })).status, 400);
+  assert.equal((await api('/api/state')).data.weeklyReports.length, 2);
 });

@@ -23,7 +23,7 @@ flowchart LR
 - `Card`: title, personal action, outcome, contribution, tags, exact source quotes, open questions, related-card IDs, draft/confirmed state, revision, tool trace, and up to 30 previous revisions.
 - `Run`: original JD, requirement mappings, execution mode, trace, immutable selected cards/sources, and exported Markdown. The most recent 50 runs are retained.
 - Daily entries are `Source` records with `kind: daily`, a validated calendar date, and separate completed/blockers/next fields. The date is part of their content hash. Same-day additions preserve earlier entries.
-- `WeeklyReport`: Monday/Sunday date bounds, three sections with exact source quotations, immutable daily source snapshots, mode, trace and Markdown. The most recent 100 reports are retained. Reading a pre-journal version-1 ledger initializes the missing `weeklyReports` array without changing existing records.
+- `WeeklyReport`: inclusive user-selected start/end dates, three sections with exact source quotations, immutable daily source snapshots, mode, trace and Markdown. The most recent 100 reports are retained. Reading a pre-journal version-1 ledger initializes the missing `weeklyReports` array without changing existing records.
 
 The MVP allows 500 source records. Source input is limited to 40,000 characters; JD input to 20,000. Imported files are limited to 200 KB. Local draft mode takes an excerpt up to 2,400 characters, while preserving the complete original source. Agent search returns at most 30 cards per query. These are practical MVP bounds, not a long-document retrieval system.
 
@@ -58,7 +58,7 @@ For this reason, the review UI shows original quotes next to editable claims, cl
 
 Only tool names and short operational summaries are retained. No private chain of thought is requested or stored. Provider bodies and secrets are omitted from application error responses.
 
-Weekly tasks expose only `read_week_notes` and `finish_weekly`; the read tool is scoped to that week's immutable input snapshot. Week arithmetic uses UTC calendar dates to avoid DST/timezone boundary errors; the browser's local date is only a form default. Generation is capped at 30 daily entries and 60,000 characters. Local generation merges identical lines within each section and retains all source IDs; it makes no semantic claim about whether old plans or blockers remain current.
+Weekly tasks expose only `read_week_notes` and `finish_weekly`; the read tool is scoped to the selected range's immutable input snapshot. The API requires explicit start/end values and validates calendar dates and start <= end. Filtering uses inclusive ISO date comparisons without rounding to a week boundary; the browser defaults to the last seven days using UTC calendar arithmetic and local today. Existing reports retain their saved dates and snapshots. Generation is capped at 30 daily entries and 60,000 characters. Local generation merges identical lines within each section and retains all source IDs; it makes no semantic claim about whether old plans or blockers remain current.
 
 ## Local app boundary
 

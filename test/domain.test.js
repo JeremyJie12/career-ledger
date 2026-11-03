@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sourceFrom, localDraft, validateCard, validateMatches, localMatch, resumeFor, weekRange, dailySource, weeklySources, localWeekly, validateWeekly } from '../src/domain.js';
+import { sourceFrom, localDraft, validateCard, validateMatches, localMatch, resumeFor, dateRange, dailySource, weeklySources, localWeekly, validateWeekly } from '../src/domain.js';
 import { demoData } from '../examples/demo.js';
 
 test('local draft preserves source verbatim and never assumes ownership or results', () => {
@@ -36,11 +36,13 @@ test('resume preserves approved wording and links each claim to exact source', (
   assert.ok(markdown.includes(state.cards[2].evidence[0].quote));
   assert.ok(!markdown.includes('准确率提升 30%'));
 });
-test('daily date validation and Monday-to-Sunday week selection handle year boundaries', () => {
-  assert.deepEqual(weekRange('2027-01-01'), { start: '2026-12-28', end: '2027-01-03' });
-  assert.deepEqual(weekRange('2026-11-08'), { start: '2026-11-02', end: '2026-11-08' });
-  assert.throws(() => weekRange('2026-02-30'), /有效日期/);
-  assert.throws(() => weekRange('2026-2-3'), /有效日期/);
+test('date ranges preserve arbitrary inclusive endpoints and reject invalid or reversed dates', () => {
+  assert.deepEqual(dateRange('2026-12-30', '2027-01-04'), { start: '2026-12-30', end: '2027-01-04' });
+  assert.deepEqual(dateRange('2026-11-03', '2026-11-03'), { start: '2026-11-03', end: '2026-11-03' });
+  assert.throws(() => dateRange('2026-02-30', '2026-03-01'));
+  assert.throws(() => dateRange('2026-2-3', '2026-03-01'));
+  assert.throws(() => dateRange('2026-11-04', '2026-11-03'));
+  assert.throws(() => dateRange(undefined, '2026-11-03'));
 });
 test('weekly grouping keeps plans separate, deduplicates identical items and excludes adjacent weeks', () => {
   const notes = [
@@ -48,7 +50,7 @@ test('weekly grouping keeps plans separate, deduplicates identical items and exc
     dailySource({ date: '2026-11-03', completed: '完成需求梳理', blockers: '等待接口' }),
     dailySource({ date: '2026-11-09', completed: '不应进入本周' }),
   ];
-  const week = weeklySources(notes, '2026-11-04');
+  const week = weeklySources(notes, '2026-11-02', '2026-11-03');
   assert.equal(week.notes.length, 2);
   const sections = localWeekly(week.notes);
   assert.equal(sections.completed.length, 1); assert.equal(sections.completed[0].evidence.length, 2);

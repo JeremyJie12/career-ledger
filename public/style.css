@@ -12,3 +12,5 @@
 .model-status{display:block;margin-top:12px;color:#617458;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 
 button.danger{color:#9b4e36}button.danger:hover:not(:disabled){background:#faebe3}.trash-row{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:14px 0}.trash-row h3{overflow-wrap:anywhere}.topbar>.row{flex-wrap:wrap;justify-content:flex-end}.topbar{height:auto;min-height:83px;padding:18px 0}.card-footer{gap:6px;flex-wrap:wrap}
+
+.date-range{display:grid;grid-template-columns:1fr 1fr;gap:12px}.date-range input{min-width:0}@media(max-width:480px){.date-range{grid-template-columns:1fr}}

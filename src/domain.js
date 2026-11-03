@@ -19,12 +19,10 @@ export function dateOnly(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value) throw new AppError('请选择有效日期');
   return value;
 }
-export function weekRange(value) {
-  const day = new Date(`${dateOnly(value)}T00:00:00Z`);
-  day.setUTCDate(day.getUTCDate() - (day.getUTCDay() + 6) % 7);
-  const start = day.toISOString().slice(0, 10);
-  day.setUTCDate(day.getUTCDate() + 6);
-  return { start, end: day.toISOString().slice(0, 10) };
+export function dateRange(start, end) {
+  dateOnly(start); dateOnly(end);
+  if (start > end) throw new AppError('开始日期不能晚于结束日期');
+  return { start, end };
 }
 export function dailySource(input) {
   const date = dateOnly(input.date);
@@ -35,9 +33,9 @@ export function dailySource(input) {
   const content = `日期：${date}\n\n完成事项\n${completed}\n\n问题与阻碍\n${blockers || '未记录'}\n\n下一步\n${next || '未记录'}`;
   return { ...sourceFrom({ title: `${date} · 日报`, content }), hash: createHash('sha256').update(`daily\n${content}`).digest('hex'), kind: 'daily', date, daily: { completed, blockers, next } };
 }
-export function weeklySources(sources, date) {
-  const range = weekRange(date);
-  return { ...range, notes: sources.filter(s => s.kind === 'daily' && s.date >= range.start && s.date <= range.end).sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt)) };
+export function weeklySources(sources, start, end) {
+  const range = dateRange(start, end);
+  return { ...range, notes: sources.filter(s => !s.deletedAt && s.kind === 'daily' && s.date >= start && s.date <= end).sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt)) };
 }
 export function localWeekly(notes) {
   const group = field => {
@@ -66,9 +64,9 @@ export function validateWeekly(input, notes) {
 export function weeklyMarkdown(report) {
   const lines = [`# 工作周报 · ${report.start} — ${report.end}`, '', `基于 ${report.sources.length} 条日报记录 · ${report.mode === 'agent' ? '模型归纳，请对照来源复核' : '本地归集，合并完全相同条目'}`, ''];
   const references = new Map(report.sources.map((s, i) => [s.id, i + 1]));
-  for (const [key, label] of [['completed', '本周完成'], ['blockers', '问题与阻碍（记录时状态）'], ['next', '后续计划（请核对是否仍待执行）']]) {
+  for (const [key, label] of [['completed', '期间完成'], ['blockers', '问题与阻碍（记录时状态）'], ['next', '后续计划（请核对是否仍待执行）']]) {
     lines.push(`## ${label}`, '');
-    if (!report.sections[key].length) lines.push('本周日报未记录此项。', '');
+    if (!report.sections[key].length) lines.push('所选时间段的日报未记录此项。', '');
     for (const item of report.sections[key]) lines.push(`- ${item.text} ${[...new Set(item.evidence.map(e => `[D${references.get(e.sourceId)}]`))].join(' ')}`);
     lines.push('');
   }
